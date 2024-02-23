@@ -72,9 +72,9 @@ struct AbsOpConversion : public OpConversionPattern<complex::AbsOp> {
     Value absReal = b.create<arith::MulFOp>(realSqrt, imagAbs, fmf.getValue());
 
     rewriter.replaceOpWithNewOp<arith::SelectOp>(
-        op, realIsZero, imag,
+        op, realIsZero, imagAbs,
         b.create<arith::SelectOp>(
-            imagIsZero, real,
+            imagIsZero, realAbs,
             b.create<arith::SelectOp>(
                 b.create<arith::CmpFOp>(arith::CmpFPredicate::OGT, real, imag),
                 absImag, absReal)));

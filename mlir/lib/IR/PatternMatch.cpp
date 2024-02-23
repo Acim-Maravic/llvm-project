@@ -209,7 +209,7 @@ void RewriterBase::eraseOp(Operation *op) {
       assert(mayBeGraphRegion(*op->getParentRegion()) &&
              "expected that op has no uses");
 #endif // NDEBUG
-    rewriteListener->notifyOperationRemoved(op);
+    rewriteListener->notifyOperationErased(op);
 
     // Explicitly drop all uses in case the op is in a graph region.
     op->dropAllUses();
@@ -265,7 +265,7 @@ void RewriterBase::eraseBlock(Block *block) {
 
   // Notify the listener that the block is about to be removed.
   if (auto *rewriteListener = dyn_cast_if_present<Listener>(listener))
-    rewriteListener->notifyBlockRemoved(block);
+    rewriteListener->notifyBlockErased(block);
 
   block->erase();
 }
@@ -317,7 +317,16 @@ void RewriterBase::inlineBlockBefore(Block *source, Block *dest,
 
   // Move operations from the source block to the dest block and erase the
   // source block.
-  dest->getOperations().splice(before, source->getOperations());
+  if (!listener) {
+    // Fast path: If no listener is attached, move all operations at once.
+    dest->getOperations().splice(before, source->getOperations());
+  } else {
+    while (!source->empty())
+      moveOpBefore(&source->front(), dest, before);
+  }
+
+  // Erase the source block.
+  assert(source->empty() && "expected 'source' to be empty");
   eraseBlock(source);
 }
 
@@ -334,7 +343,25 @@ void RewriterBase::mergeBlocks(Block *source, Block *dest,
 /// Split the operations starting at "before" (inclusive) out of the given
 /// block into a new block, and return it.
 Block *RewriterBase::splitBlock(Block *block, Block::iterator before) {
-  return block->splitBlock(before);
+  // Fast path: If no listener is attached, split the block directly.
+  if (!listener)
+    return block->splitBlock(before);
+
+  // `createBlock` sets the insertion point at the beginning of the new block.
+  InsertionGuard g(*this);
+  Block *newBlock =
+      createBlock(block->getParent(), std::next(block->getIterator()));
+
+  // If `before` points to end of the block, no ops should be moved.
+  if (before == block->end())
+    return newBlock;
+
+  // Move ops one-by-one from the end of `block` to the beginning of `newBlock`.
+  // Stop when the operation pointed to by `before` has been moved.
+  while (before->getBlock() != newBlock)
+    moveOpBefore(&block->back(), newBlock, newBlock->begin());
+
+  return newBlock;
 }
 
 /// Move the blocks that belong to "region" before the given position in
@@ -355,24 +382,6 @@ void RewriterBase::inlineRegionBefore(Region &region, Region &parent,
 }
 void RewriterBase::inlineRegionBefore(Region &region, Block *before) {
   inlineRegionBefore(region, *before->getParent(), before->getIterator());
-}
-
-/// Clone the blocks that belong to "region" before the given position in
-/// another region "parent". The two regions must be different. The caller is
-/// responsible for creating or updating the operation transferring flow of
-/// control to the region and passing it the correct block arguments.
-void RewriterBase::cloneRegionBefore(Region &region, Region &parent,
-                                     Region::iterator before,
-                                     IRMapping &mapping) {
-  region.cloneInto(&parent, before, mapping);
-}
-void RewriterBase::cloneRegionBefore(Region &region, Region &parent,
-                                     Region::iterator before) {
-  IRMapping mapping;
-  cloneRegionBefore(region, parent, before, mapping);
-}
-void RewriterBase::cloneRegionBefore(Region &region, Block *before) {
-  cloneRegionBefore(region, *before->getParent(), before->getIterator());
 }
 
 void RewriterBase::moveBlockBefore(Block *block, Block *anotherBlock) {

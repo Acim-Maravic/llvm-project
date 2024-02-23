@@ -211,6 +211,10 @@ ModuleDepCollector::getInvocationAdjustedForModuleBuildWithoutOutputs(
       ScanInstance.getFileManager().getFile(Deps.ClangModuleMapFile);
   assert(CurrentModuleMapEntry && "module map file entry not found");
 
+  // Remove directly passed modulemap files. They will get added back if they
+  // were actually used.
+  CI.getMutFrontendOpts().ModuleMapFiles.clear();
+
   auto DepModuleMapFiles = collectModuleMapFiles(Deps.ClangModuleDeps);
   for (StringRef ModuleMapFile : Deps.ModuleMapFileDeps) {
     // TODO: Track these as `FileEntryRef` to simplify the equality check below.
@@ -426,14 +430,14 @@ void ModuleDepCollectorPP::LexedFileChanged(FileID FID,
 void ModuleDepCollectorPP::InclusionDirective(
     SourceLocation HashLoc, const Token &IncludeTok, StringRef FileName,
     bool IsAngled, CharSourceRange FilenameRange, OptionalFileEntryRef File,
-    StringRef SearchPath, StringRef RelativePath, const Module *Imported,
-    SrcMgr::CharacteristicKind FileType) {
-  if (!File && !Imported) {
+    StringRef SearchPath, StringRef RelativePath, const Module *SuggestedModule,
+    bool ModuleImported, SrcMgr::CharacteristicKind FileType) {
+  if (!File && !ModuleImported) {
     // This is a non-modular include that HeaderSearch failed to find. Add it
     // here as `FileChanged` will never see it.
     MDC.addFileDep(FileName);
   }
-  handleImport(Imported);
+  handleImport(SuggestedModule);
 }
 
 void ModuleDepCollectorPP::moduleImport(SourceLocation ImportLoc,

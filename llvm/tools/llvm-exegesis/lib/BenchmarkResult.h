@@ -17,6 +17,7 @@
 
 #include "LlvmState.h"
 #include "RegisterValue.h"
+#include "ValidationEvent.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstBuilder.h"
@@ -31,16 +32,6 @@ namespace llvm {
 class Error;
 
 namespace exegesis {
-
-enum ValidationEvent {
-  InstructionRetired,
-  L1DCacheLoadMiss,
-  L1DCacheStoreMiss,
-  L1ICacheLoadMiss,
-  DataTLBLoadMiss,
-  DataTLBStoreMiss,
-  InstructionTLBLoadMiss
-};
 
 enum class BenchmarkPhaseSelectorE {
   PrepareSnippet,
@@ -116,7 +107,7 @@ struct Benchmark {
   const MCInst &keyInstruction() const { return Key.Instructions[0]; }
   // The number of instructions inside the repeated snippet. For example, if a
   // snippet of 3 instructions is repeated 4 times, this is 12.
-  unsigned NumRepetitions = 0;
+  unsigned MinInstructions = 0;
   enum RepetitionModeE {
     Duplicate,
     Loop,
